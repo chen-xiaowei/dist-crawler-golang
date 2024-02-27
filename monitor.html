@@ -1,0 +1,290 @@
+<!DOCTYPE html>
+<head>
+    <meta http-equiv="Content-Type" content="text/html; charset=utf-8">
+    <title>Crawler Monitor</title>
+
+</head>
+<body style="background:black; color:#FFFFF0">
+
+<div style="width:230px">
+<!--    display:inline-->
+    链接抽取进度<div style="width:100px; height:10px; background: rgb(205, 0, 205); float:right; margin:7px"></div>
+    <div></div>
+    数据爬取进度<div style="width:100px; height:10px; background: rgb(61	,145,	64); float:right; margin:-15px 7px"></div>
+</div>
+
+<div style="width:100%;">
+  <div id="bars" style="width:60%; float: left; min-height:1px"></div>
+  <div style="width:40%; float: left;">
+    <span>任务节点</span><span id="slavesCount"></span>
+    <div id="slaves"></div>
+  </div>
+</div>
+
+<br>
+
+<div style="width:100%; float: left;">
+<div>已爬取数据总量 : <span id="crawledCount"></span> |  爬取速度 : <span id="crawlSpeed"></span>  峰值 : <span id="maxSpeed"></span></div>
+</div>
+
+<div id="finishTasks" style="width:100%; float: left; margin: 20px auto"></div>
+
+</body>
+</html>
+
+
+<script>
+
+function getProgress() {
+    var req = new XMLHttpRequest();
+    req.open("GET", "/monitor/data", true);
+    req.send();
+    req.onreadystatechange = function () {
+        if (req.readyState == 4 && req.status == 200) {
+            
+<!--            alert(req.responseText);-->
+
+            var data = JSON.parse(req.responseText);
+
+            showFinishTasks(data.finishedCrawlTasks);
+
+            updateProgress(data.crawlingTasks, data.pageSize);
+
+            removeFinishedTaskProgressBar(data.finishedCrawlTasks);
+            
+            showSlaves(data.slaves)
+        }
+    }
+}
+
+function removeFinishedTaskProgressBar(finishedTasks) {
+    if (finishedTasks == null) {
+        return;
+    }
+    for (var i = 0; i < finishedTasks.length; i++) {
+      var finishedTask = document.getElementById(finishedTasks[i]);
+      if (null != finishedTask) {
+        finishedTask.remove();
+      }
+    }
+}
+
+function updateProgress(tasks, pageSize) {
+    if (null == tasks) {
+        return;
+    }
+    var progressBarHeight = '15px';
+        
+    for (var i = 0; i < tasks.length; i++) {
+        var bar = document.getElementById(tasks[i].taskName);
+        if (null != bar) {
+            var dataProgress = document.getElementById(tasks[i].taskName + '-progress');
+            
+            var dataHandleProgress = tasks[i].crawledRecordCount / parseInt(tasks[i].recordCount) * 100;
+            bar.title = tasks[i].link + ' | crawledRecordCount: ' + tasks[i].crawledRecordCount + ' | recordCount: ' + parseInt(tasks[i].recordCount) + ' | ' + dataHandleProgress + '%';
+            var lastDataRate = dataProgress.style.width;
+            lastDataRate = parseInt(lastDataRate.substring(0, lastDataRate.length - 1));
+            setProgress(dataProgress, dataHandleProgress, lastDataRate);
+
+            var pageProgress = document.getElementById(tasks[i].taskName + '-pageProgress');
+            var pageHandleProgress = parseInt(tasks[i].pageNum) / parseInt(tasks[i].pageCount) * 100;
+            var lastPageRate = pageProgress.style.width;
+            lastPageRate = parseInt(lastPageRate.substring(0, lastPageRate.length - 1));
+            setProgress(pageProgress, pageHandleProgress, lastPageRate);
+
+            bar.innerHTML = '正在爬取 [' + tasks[i].taskName + '] - 第 ' + tasks[i].pageNum + '/' + tasks[i].pageCount + ' 页';
+            bar.appendChild(dataProgress);
+            bar.appendChild(pageProgress);
+
+            continue;
+        }
+        var div = document.createElement('div');
+        div.id = tasks[i].taskName;
+        div.position = 'absolute';
+        div.style.margin = '10px auto';
+        div.style.borderStyle = 'solid';
+        div.style.borderColor = 'rgb(156, 187, 70)';
+        div.style.width = '90%';
+        div.style.height = '30px';
+        div.style.zIndex = "100";
+        div.innerText = '正在爬取 [' + tasks[i].taskName + '] - 第 ' + tasks[i].pageNum + '/' + tasks[i].pageCount + ' 页';
+        div.title = tasks[i].link;
+
+        var dataProgress = document.createElement('div');
+        dataProgress.id = tasks[i].taskName + '-progress';
+        dataProgress.position = 'absolute';
+        dataProgress.style.marginTop = '-21px';
+        dataProgress.style.background = 'rgb(61	,145,	64)';
+        dataProgress.style.height = progressBarHeight;
+        dataProgress.style.zIndex = "99";
+        dataProgress.style.width = tasks[i].crawledRecordCount / tasks[i].recordCount * 100 + '%';
+<!--        dataProgress.style.width = (tasks[i].crawledRecordCount / (tasks[i].pageCount * pageSize) * 100) + '%';-->
+
+        div.appendChild(dataProgress);
+
+        var pageProgress = document.createElement('div');
+        pageProgress.id = tasks[i].taskName + '-pageProgress';
+        pageProgress.position = 'absolute';
+        pageProgress.style.marginTop = '0px';
+        pageProgress.style.background = 'rgb(205, 0, 205)';
+        pageProgress.style.height = progressBarHeight;
+        pageProgress.style.zIndex = "98";
+        pageProgress.style.width = parseInt(tasks[i].pageNum) / parseInt(tasks[i].pageCount) * 100 + '%';
+        
+        div.appendChild(pageProgress);
+
+        document.getElementById('bars').appendChild(div);
+    }
+}
+
+function showTaskQueueUseInfo(barId, queueInfo, text) {
+    var progress = document.getElementById(barId + '-progress');
+    var size = parseInt(queueInfo.size);
+    var capacity = size + parseInt(queueInfo.remainingCapacity);
+    var rate = size / capacity * 100;
+
+    if (progress != null) {
+        if (rate <= 50) {
+            progress.style.background = 'rgb(167, 239, 73)';
+        } else if (rate > 50 && rate <= 90) {
+            progress.style.background = 'rgb(255, 255, 0)';
+        } else {
+            progress.style.background = 'rgb(255, 0, 0)';
+        }
+        setProgress(progress, rate, 1);
+        progress.title = queueInfo.size + '/' + capacity;
+
+        return;
+    }
+    var div = document.getElementById(barId);
+    div.position = 'absolute';
+    div.style.margin = '0 auto';
+    div.style.borderStyle = 'solid';
+    div.style.borderColor = 'rgb(156, 187, 70)';
+    div.style.width = '90%';
+    div.style.zIndex = "100";
+    div.innerText = text;
+
+    var progress = document.createElement('div');
+    progress.id = barId + '-progress';
+    progress.position = 'absolute';
+    progress.style.marginTop = '-21px';
+    progress.style.height = '100%';
+    progress.style.zIndex = "99";
+    progress.style.width = rate + '%';
+
+    div.appendChild(progress);
+}
+
+function showFinishTasks(finishTasks) {
+    if (finishTasks == null) {
+        return;
+    }
+    var taskDiv = document.getElementById('finishTasks');
+    var tasks = "爬取完毕任务 : ";
+    for (var i = 0; i < finishTasks.length; i++) {
+        tasks += ' ' + finishTasks[i] + ' ';
+    }
+    taskDiv.innerText = tasks + ' | 总数 : ' + finishTasks.length;
+}
+
+<!--动态设置进度条-->
+function setProgress(progressBar, rate, speed) {
+    var ordinarilyRate = parseInt(progressBar.style.width.substring(0, progressBar.style.width.indexOf('%')));
+
+    if (ordinarilyRate == Math.floor(rate)) {
+        return;
+    }
+<!--    var step = Math.abs(1000 / speed);-->
+<!--    alert(step);-->
+    var timer = setInterval(function() {
+        var oldOrdinarilyRate = ordinarilyRate;
+        var newRate;
+        if (oldOrdinarilyRate <= rate) {
+<!--            newRate = ordinarilyRate += step;-->
+            newRate = ordinarilyRate += 0.1;
+        } else {
+<!--            newRate = ordinarilyRate -= step;-->
+            newRate = ordinarilyRate -= 0.1;
+        }
+        progressBar.style.width = newRate + '%';
+        if ((oldOrdinarilyRate <= rate && ordinarilyRate > rate)
+            || (oldOrdinarilyRate >= rate && ordinarilyRate < rate)) {
+            clearInterval(timer);
+        }
+    }, 1);//speed
+}
+
+setInterval(getProgress, 1000);
+
+var lastCrawledCount = -1;
+var maxSpeed = -1;
+
+function getCrawledCount() {
+    var req = new XMLHttpRequest();
+    req.open("GET", "/monitor/data/crawledCount", true);
+    req.send();
+    req.onreadystatechange = function () {
+        if (req.readyState == 4 && req.status == 200) {
+            var countSpan = document.getElementById("crawledCount");
+            if (countSpan.innerText == '') {
+                countSpan.innerText = req.responseText;
+                return;
+            }
+            var ordinarily = parseInt(countSpan.innerText);
+            var count = parseInt(req.responseText);
+            if (ordinarily == count) {
+                return;
+            }
+
+            //var speed = count - lastCrawledCount;
+            //if (speed > maxSpeed) {
+              //maxSpeed = speed;
+              //document.getElementById("maxSpeed").innerText = maxSpeed + '条/秒';
+            //}
+            //document.getElementById("crawlSpeed").innerText = speed + '条/秒';
+            //lastCrawledCount = count;
+            
+            if (lastCrawledCount == -1) {
+                lastCrawledCount = count;
+            } else {
+                var speed = count - lastCrawledCount;
+                document.getElementById("crawlSpeed").innerText = speed + '条/秒';
+                lastCrawledCount = count;
+
+                if (speed > maxSpeed) {
+                    maxSpeed = speed;
+                    document.getElementById("maxSpeed").innerText = maxSpeed + '条/秒';
+                }
+            }
+            var timer = setInterval(function() {
+                countSpan.innerText = ordinarily += 1;
+                if (ordinarily > count) {
+                    clearInterval(timer);
+                }
+            }, 1);
+        }
+    }
+}
+setInterval(getCrawledCount, 3500);
+
+function showSlaves(slaves) {
+    var slavesDiv = document.getElementById('slaves');
+    slavesDiv.innerHTML = '';
+    
+<!--    slaves = ["192.168.1.1:9999", "192.168.1.1:9999"]-->
+    
+    for (var i = 0; i < slaves.length; i++) {
+        var slave = document.createElement('div');
+        slave.id = slaves[i];
+        slave.style.width = '50%';
+        slave.style.background = 'rgb(61	,145,	64)';
+        slave.style.margin = '5px auto auto 0px';
+        slave.style.borderRadius = '5px'
+        slave.innerText = slaves[i];
+    
+        slavesDiv.appendChild(slave);
+    }
+    document.getElementById('slavesCount').innerText = '[' + slaves.length + ']';
+}
+</script>
